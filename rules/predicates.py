@@ -1,5 +1,14 @@
-import inspect
 from functools import partial, update_wrapper
+import inspect
+import threading
+
+
+class localcontext(threading.local):
+    def __init__(self):
+        self.stack = []
+
+
+_context = localcontext()
 
 
 class Predicate(object):
@@ -37,44 +46,86 @@ class Predicate(object):
     def __call__(self, *args, **kwargs):
         # this method is defined as variadic in order to not mask the
         # underlying callable's signature that was most likely decorated
-        # as a predicate. internally we consistently call ``test`` that
+        # as a predicate. internally we consistently call ``_apply`` that
         # provides a single interface to the callable.
         return self.fn(*args, **kwargs)
 
+    @property
+    def context(self):
+        """
+        The currently active invocation context. A new context is created as a
+        result of invoking ``test()`` and is only valid for the duration of
+        the invocation.
+
+        Can be used by predicates to store arbitrary data, eg. for caching
+        computed values, setting flags, etc., that can be used by predicates
+        later on in the chain.
+
+        Inside a predicate function it can be used like so::
+
+            >>> @predicate
+            ... def mypred(a, b):
+            ...     value = compute_expensive_value(a)
+            ...     mypred.context['value'] = value
+            ...     return True
+            ...
+
+        Other predicates can later use stored values::
+
+            >>> @predicate
+            ... def myotherpred(a, b):
+            ...     value = myotherpred.context.get('value')
+            ...     if value is not None:
+            ...         return do_something_with_value(value)
+            ...     else:
+            ...         return do_something_without_value()
+            ...
+
+        """
+        try:
+            return _context.stack[-1]
+        except IndexError:
+            return None
+
+    def test(self, obj=None, target=None):
+        """
+        The canonical method to invoke predicates.
+        """
+        _context.stack.append({})
+        try:
+            return self._apply(obj, target)
+        finally:
+            _context.stack.pop()
+
     def __and__(self, other):
         def AND(obj=None, target=None):
-            return self.test(obj, target) and other.test(obj, target)
+            return self._apply(obj, target) and other._apply(obj, target)
         return type(self)(AND, '(%s & %s)' % (self.name, other.name))
 
     def __or__(self, other):
         def OR(obj=None, target=None):
-            return self.test(obj, target) or other.test(obj, target)
+            return self._apply(obj, target) or other._apply(obj, target)
         return type(self)(OR, '(%s | %s)' % (self.name, other.name))
 
     def __xor__(self, other):
         def XOR(obj=None, target=None):
-            return self.test(obj, target) ^ other.test(obj, target)
+            return self._apply(obj, target) ^ other._apply(obj, target)
         return type(self)(XOR, '(%s ^ %s)' % (self.name, other.name))
 
     def __invert__(self):
         def INVERT(obj=None, target=None):
-            return not self.test(obj, target)
+            return not self._apply(obj, target)
         if self.name.startswith('~'):
             name = self.name[1:]
         else:
             name = '~' + self.name
         return type(self)(INVERT, name)
 
-    def test(self, obj=None, target=None):
-        # we setup a list of function args depending on the number of
-        # arguments accepted by the underlying callback.
-        if self.num_args == 2:
-            args = (obj, target)
-        elif self.num_args == 1:
-            args = (obj,)
-        else:
-            args = ()
-        return bool(self.fn(*args))
+    def _apply(self, *args):
+        # Internal method that is used to invoke the predicate with the
+        # proper number of positional arguments, inside the current
+        # invocation context.
+        return bool(self.fn(*args[:self.num_args]))
 
 
 def predicate(fn=None, name=None):

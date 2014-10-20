@@ -235,3 +235,33 @@ def test_no_mask():
         assert a == 'a'
         assert b == 'b'
     p('a', b='b', c='c')
+
+
+def test_invocation_context():
+    @predicate
+    def p1():
+        assert id(p1.context) == id(p2.context)
+        return True
+
+    @predicate
+    def p2():
+        assert id(p1.context) == id(p2.context)
+        return True
+
+    p = p1 & p2
+    assert p.test()
+    assert p.context is None
+
+
+def test_invocation_context_storage():
+    @predicate
+    def p1(a):
+        p1.context['p1.a'] = a
+        return True
+
+    @predicate
+    def p2(a):
+        return p2.context['p1.a'] == a
+
+    p = p1 & p2
+    assert p.test('a')
