@@ -17,7 +17,16 @@ class localcontext(threading.local):
 _context = localcontext()
 
 
-NO_VALUE = frozenset()
+class NoValueSentinel(object):
+    def __bool__(self):
+        return False
+
+    __nonzero__ = __bool__  # python 2
+
+
+NO_VALUE = NoValueSentinel()
+
+del NoValueSentinel
 
 
 class Predicate(object):
