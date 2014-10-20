@@ -188,10 +188,9 @@ def test_INV():
 def test_var_args():
     @predicate
     def p(*args, **kwargs):
-        assert len(args) == 0
+        assert len(args) > 0
         assert len(kwargs) == 0
     assert p.num_args == 0
-    p.test()
     p.test('a')
     p.test('a', 'b')
 

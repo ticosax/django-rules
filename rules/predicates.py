@@ -28,21 +28,28 @@ class Predicate(object):
         #   - fn()
         assert callable(fn), 'The given predicate is not callable.'
         if isinstance(fn, Predicate):
-            fn, num_args, name = fn.fn, fn.num_args, name or fn.name
+            fn, num_args, var_args, name = fn.fn, fn.num_args, fn.var_args, name or fn.name
         elif isinstance(fn, partial):
-            num_args = len(inspect.getargspec(fn.func).args) - len(fn.args)
+            argspec = inspect.getargspec(fn.func)
+            num_args = len(argspec.args) - len(fn.args)
+            var_args = argspec.varargs is not None
             name = fn.func.__name__
         elif inspect.isfunction(fn):
-            num_args = len(inspect.getargspec(fn).args)
+            argspec = inspect.getargspec(fn)
+            var_args = argspec.varargs is not None
+            num_args = len(argspec.args)
         elif isinstance(fn, object):
             callfn = getattr(fn, '__call__')
-            num_args = len(inspect.getargspec(callfn).args) - 1  # skip `self`
+            argspec = inspect.getargspec(callfn)
+            var_args = argspec.varargs is not None
+            num_args = len(argspec.args) - 1  # skip `self`
             name = name or type(fn).__name__
         else:
             raise TypeError('Incompatible predicate.')
         assert num_args <= 2, 'Incompatible predicate.'
         self.fn = fn
         self.num_args = num_args
+        self.var_args = var_args
         self.name = name or fn.__name__
 
     def __repr__(self):
@@ -135,7 +142,9 @@ class Predicate(object):
         # Internal method that is used to invoke the predicate with the
         # proper number of positional arguments, inside the current
         # invocation context.
-        if self.num_args > len(args):
+        if self.var_args:
+            callargs = args
+        elif self.num_args > len(args):
             callargs = args + (None,) * (self.num_args - len(args))
         else:
             callargs = args[:self.num_args]
