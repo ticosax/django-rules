@@ -241,15 +241,37 @@ def test_invocation_context():
     @predicate
     def p1():
         assert id(p1.context) == id(p2.context)
+        assert p1.context.args == ('a',)
         return True
 
     @predicate
     def p2():
         assert id(p1.context) == id(p2.context)
+        assert p2.context.args == ('a',)
         return True
 
     p = p1 & p2
-    assert p.test()
+    assert p.test('a')
+    assert p.context is None
+
+
+def test_invocation_context_nested():
+    @predicate
+    def p1():
+        assert p1.context.args == ('b1',)
+        return True
+
+    @predicate
+    def p2():
+        assert p2.context.args == ('b2',)
+        return True
+
+    @predicate
+    def p():
+        assert p1.context.args == ('a',)
+        return p1.test('b1') & p2.test('b2')
+
+    assert p.test('a')
     assert p.context is None
 
 

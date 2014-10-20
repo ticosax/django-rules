@@ -3,12 +3,21 @@ import inspect
 import threading
 
 
+class Context(dict):
+    def __init__(self, args):
+        super(Context, self).__init__()
+        self.args = args
+
+
 class localcontext(threading.local):
     def __init__(self):
         self.stack = []
 
 
 _context = localcontext()
+
+
+NO_VALUE = frozenset()
 
 
 class Predicate(object):
@@ -87,34 +96,35 @@ class Predicate(object):
         except IndexError:
             return None
 
-    def test(self, obj=None, target=None):
+    def test(self, obj=NO_VALUE, target=NO_VALUE):
         """
         The canonical method to invoke predicates.
         """
-        _context.stack.append({})
+        args = tuple(arg for arg in (obj, target) if arg is not NO_VALUE)
+        _context.stack.append(Context(args))
         try:
-            return self._apply(obj, target)
+            return self._apply(*args)
         finally:
             _context.stack.pop()
 
     def __and__(self, other):
-        def AND(obj=None, target=None):
-            return self._apply(obj, target) and other._apply(obj, target)
+        def AND(*args):
+            return self._apply(*args) and other._apply(*args)
         return type(self)(AND, '(%s & %s)' % (self.name, other.name))
 
     def __or__(self, other):
-        def OR(obj=None, target=None):
-            return self._apply(obj, target) or other._apply(obj, target)
+        def OR(*args):
+            return self._apply(*args) or other._apply(*args)
         return type(self)(OR, '(%s | %s)' % (self.name, other.name))
 
     def __xor__(self, other):
-        def XOR(obj=None, target=None):
-            return self._apply(obj, target) ^ other._apply(obj, target)
+        def XOR(*args):
+            return self._apply(*args) ^ other._apply(*args)
         return type(self)(XOR, '(%s ^ %s)' % (self.name, other.name))
 
     def __invert__(self):
-        def INVERT(obj=None, target=None):
-            return not self._apply(obj, target)
+        def INVERT(*args):
+            return not self._apply(*args)
         if self.name.startswith('~'):
             name = self.name[1:]
         else:
@@ -125,7 +135,11 @@ class Predicate(object):
         # Internal method that is used to invoke the predicate with the
         # proper number of positional arguments, inside the current
         # invocation context.
-        return bool(self.fn(*args[:self.num_args]))
+        if self.num_args > len(args):
+            callargs = args + (None,) * (self.num_args - len(args))
+        else:
+            callargs = args[:self.num_args]
+        return bool(self.fn(*callargs))
 
 
 def predicate(fn=None, name=None):
