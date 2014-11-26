@@ -1,6 +1,13 @@
 import functools
 
-from rules.predicates import Predicate, predicate, always_true, always_false, NO_VALUE
+from rules.predicates import (
+    DiscardPredicate,
+    NO_VALUE,
+    Predicate,
+    always_false,
+    always_true,
+    predicate,
+)
 
 
 def test_lambda_predicate():
@@ -305,3 +312,26 @@ def test_binding_predicate():
         return self is is_bound
 
     assert is_bound()
+
+
+def test_discard_predicate():
+    @predicate(bind=True)
+    def call_me_with_two_args(self, a, b):
+        if len(self.context.args) < 2:
+            raise DiscardPredicate
+        return a == b
+
+    @predicate
+    def call_me_with_one_arg(a):
+        return a
+
+    assert (call_me_with_two_args & call_me_with_one_arg).test(True, True)
+    assert not (call_me_with_two_args & call_me_with_one_arg).test(True, False)
+
+    # because call_me_with_two_args is called with only one argument
+    # its results is not taken into account, only the result of the
+    # other predicates matters.
+    assert (call_me_with_two_args & call_me_with_one_arg).test(True)
+    assert not (call_me_with_two_args & call_me_with_one_arg).test(False)
+    assert (~call_me_with_two_args & call_me_with_one_arg).test(True)
+    assert not (~call_me_with_two_args & call_me_with_one_arg).test(False)

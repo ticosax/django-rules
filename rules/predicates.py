@@ -3,6 +3,13 @@ import inspect
 import threading
 
 
+class DiscardPredicate(Exception):
+    """
+    Use to reject usage of a predicate.
+    """
+    pass
+
+
 class Context(dict):
     def __init__(self, args):
         super(Context, self).__init__()
@@ -124,35 +131,35 @@ class Predicate(object):
         args = tuple(arg for arg in (obj, target) if arg is not NO_VALUE)
         _context.stack.append(Context(args))
         try:
-            return self._apply(*args)
+            return self._apply(True, *args)
         finally:
             _context.stack.pop()
 
     def __and__(self, other):
         def AND(*args):
-            return self._apply(*args) and other._apply(*args)
+            return self._apply(True, *args) and other._apply(True, *args)
         return type(self)(AND, '(%s & %s)' % (self.name, other.name))
 
     def __or__(self, other):
         def OR(*args):
-            return self._apply(*args) or other._apply(*args)
+            return self._apply(True, *args) or other._apply(True, *args)
         return type(self)(OR, '(%s | %s)' % (self.name, other.name))
 
     def __xor__(self, other):
         def XOR(*args):
-            return self._apply(*args) ^ other._apply(*args)
+            return self._apply(True, *args) ^ other._apply(True, *args)
         return type(self)(XOR, '(%s ^ %s)' % (self.name, other.name))
 
     def __invert__(self):
         def INVERT(*args):
-            return not self._apply(*args)
+            return not self._apply(False, *args)
         if self.name.startswith('~'):
             name = self.name[1:]
         else:
             name = '~' + self.name
         return type(self)(INVERT, name)
 
-    def _apply(self, *args):
+    def _apply(self, discard_return, *args):
         # Internal method that is used to invoke the predicate with the
         # proper number of positional arguments, inside the current
         # invocation context.
@@ -162,9 +169,12 @@ class Predicate(object):
             callargs = args + (None,) * (self.num_args - len(args))
         else:
             callargs = args[:self.num_args]
-        if self.bind:
-            return bool(self.fn(self, *callargs))
-        return bool(self.fn(*callargs))
+        try:
+            if self.bind:
+                return bool(self.fn(self, *callargs))
+            return bool(self.fn(*callargs))
+        except DiscardPredicate:
+            return discard_return
 
 
 def predicate(fn=None, name=None, bind=False):
