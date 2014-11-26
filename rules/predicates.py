@@ -44,7 +44,8 @@ class Predicate(object):
         #   - fn()
         assert callable(fn), 'The given predicate is not callable.'
         if isinstance(fn, Predicate):
-            fn, num_args, var_args, name = fn.fn, fn.num_args, fn.var_args, name or fn.name
+            fn, num_args, var_args, name = (fn.fn, fn.num_args, fn.var_args,
+                                            name or fn.name)
         elif isinstance(fn, partial):
             argspec = inspect.getargspec(fn.func)
             num_args = len(argspec.args) - len(fn.args)
@@ -263,7 +264,8 @@ def is_group_member(*groups):
         if not hasattr(user, 'groups'):
             return False  # swapped user model, doesn't support groups
         if not hasattr(user, '_group_names_cache'):
-            user._group_names_cache = set(user.groups.values_list('name', flat=True))
+            user._group_names_cache = set(user.groups.values_list('name',
+                                                                  flat=True))
         return set(groups).issubset(user._group_names_cache)
 
     return fn
